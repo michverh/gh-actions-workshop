@@ -5,7 +5,6 @@ on:
 
 jobs:
   build-and-deploy:
-    - name: Builds and Deploy
-      uses: ./deploy/deploy.yml
-      runs-on: ubuntu-latest
+    uses: ./deploy/deploy.yml
+    runs-on: ubuntu-latest
 
