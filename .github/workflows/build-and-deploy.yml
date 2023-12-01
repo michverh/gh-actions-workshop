@@ -8,4 +8,4 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: build-deploy
-        uses: ./deploy/action.yml
+        uses: ./github/deploy/action.yml
