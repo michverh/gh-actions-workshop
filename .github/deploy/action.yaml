@@ -1,0 +1,7 @@
+  name: Deploy image to GCP
+
+  on: workflow_call
+
+  runs:
+    using: composite
+    steps:
