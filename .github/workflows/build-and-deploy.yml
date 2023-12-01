@@ -7,4 +7,5 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: ./deploy/action.yml
+      - name: build-deploy
+        uses: ./deploy/action.yml
