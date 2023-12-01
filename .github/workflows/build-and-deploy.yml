@@ -1,0 +1,20 @@
+name: exercise 3 variables
+
+on:
+  workflow_dispatch:
+
+    inputs:
+      user:
+        type: string
+        default: World
+        description: User's name
+        required: true
+
+  jobs:
+    build-and-deploy:
+      - name: Builds and Deploy
+        uses: ./deploy/deploy.yml
+        with:
+          image-name: test
+        runs-on: ubuntu-latest
+

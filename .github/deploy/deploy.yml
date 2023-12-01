@@ -1,0 +1,115 @@
+name: Build and deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      message:
+        description: Custom message
+        required: true
+        type: string
+
+env:
+  IMAGE_NAME: GHTEST
+
+jobs:
+  build:
+    name: Build and push docker image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check-out repo
+        uses: actions/checkout@v4
+
+      - name: Add a message
+        working-directory: ./docker
+        env:
+          CUSTOM_MESSAGE: ${{ inputs.message }}
+        run: |
+          export MESSAGE="$CUSTOM_MESSAGE"
+          envsubst < index-tmpl.html > index.html
+
+      - name: Get commit info
+        id: commit
+        uses: ./.github/git
+        with:
+          message-prefix: Commit info
+        outputs:
+          image-tag: ${{ steps.commit.outputs.short-sha }}
+
+      - name: Build image
+        working-directory: ./docker
+#        env:
+#          ARTIFACT_REGISTRY: <artifact-registry>
+#          REPOSITORY_NAME: <repository-name>
+#          IMAGE_TAG: <image-tag>
+        run: docker build . -t ${{ vars.ARTIFACT_REGISTRY }}/${{ vars.REPOSITORY_NAME }}/${{ env.IMAGE_NAME }}:${{ steps.commit.outputs.short-sha }}
+
+      - name: Auth to Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Configure docker
+#        env:
+#          ARTIFACT_REGISTRY: <artifact-registry>
+        run: gcloud auth configure-docker ${{ vars.ARTIFACT_REGISTRY }}
+
+      - name: Push image to Artifact Registry
+#        env:
+#          ARTIFACT_REGISTRY: <artifact-registry>
+#          REPOSITORY_NAME: <repository-name>
+#          IMAGE_TAG: <image-tag>
+        run: docker push ${{ vars.ARTIFACT_REGISTRY }}/${{ vars.REPOSITORY_NAME }}/${{ env.IMAGE_NAME }}:${{ steps.commit.outputs.short-sha }}
+
+  deploy:
+    name: Deploy to Cloud Run
+    needs: [build]
+    runs-on: ubuntu-latest
+    env:
+      SERVICE_NAME: gh-test-michel
+    steps:
+      - name: Check-out repo
+        uses: actions/checkout@v4
+
+      - name: Auth to Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Deploy to Cloud Run
+#        env:
+#          ARTIFACT_REGISTRY: <artifact-registry>
+#          REPOSITORY_NAME: <repository-name>
+#          IMAGE_TAG: <image-tag>
+        run: |
+          gcloud run deploy $SERVICE_NAME \
+            --image=${{ vars.ARTIFACT_REGISTRY }}/${{ vars.REPOSITORY_NAME }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.image-tag }} \
+            --region europe-west1 \
+            --memory 256Mi \
+            --cpu 200m \
+            --min-instances 0 \
+            --max-instances 1 \
+            --port 80 \
+            --timeout 10s \
+            --allow-unauthenticated
+
+      - name: Expose service
+        run: |
+          gcloud run services add-iam-policy-binding $SERVICE_NAME \
+            --region europe-west1 \
+            --member="allUsers" \
+            --role="roles/run.invoker"
+
+      - name: Get URL
+        id: url
+        run: |
+          url=$(gcloud run services describe $SERVICE_NAME \
+            --region europe-west1 \
+            --format json \
+            | jq -r ".status.address.url")
+          echo "url=$url" >> $GITHUB_OUTPUT
+
+      - name: Add summary
+        env:
+          SERVICE_URL: ${{ steps.url.outputs.url }}
+        run: |
+          echo "The image is deployed to serve on [URL]($SERVICE_URL)" >> $GITHUB_STEP_SUMMARY
